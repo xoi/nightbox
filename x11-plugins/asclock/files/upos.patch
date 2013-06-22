@@ -1,0 +1,46 @@
+diff -urp asclock-gtk.orig/asclock.c asclock-gtk.loc/asclock.c
+--- asclock-gtk.orig/asclock.c	1999-03-26 02:38:29.000000000 -0500
++++ asclock-gtk.loc/asclock.c	2004-12-15 13:43:53.051621368 -0500
+@@ -460,6 +460,7 @@ int main( int argc, char *argv[] )
+     /* now for the pixmap from gdk */
+     my->style = gtk_widget_get_style( my->window );
+     gtk_widget_realize(my->window);
++    gtk_widget_set_uposition(my->window, iX, iY);
+ 
+     my->white_gc = gdk_gc_new(my->window->window);
+     /* Get the system colour map and allocate the colour red */
+diff -urp asclock-gtk.orig/asclock.h asclock-gtk.loc/asclock.h
+--- asclock-gtk.orig/asclock.h	1999-03-26 01:49:34.000000000 -0500
++++ asclock-gtk.loc/asclock.h	2004-12-15 13:43:53.053621064 -0500
+@@ -99,6 +99,8 @@ extern char sec_xpm_fn[MAX_PATH_LEN];
+ 
+ extern char exec_str[MAX_PATH_LEN];
+ 
++int iX, iY;
++
+ extern GdkPixmap *month_pixmap;
+ extern GdkPixmap *led_pixmap;
+ extern GdkPixmap *beats_pixmap;
+diff -urp asclock-gtk.orig/config.c asclock-gtk.loc/config.c
+--- asclock-gtk.orig/config.c	1999-03-26 02:38:29.000000000 -0500
++++ asclock-gtk.loc/config.c	2004-12-15 13:45:41.473138792 -0500
+@@ -18,6 +18,7 @@ static char *help_message[] = {
+ "    -12                     12 hour format",
+ "    -24                     24 hour format",
+ "    -d                      WindowMaker docking",
++"    -p +x+y                 window position",
+ "    -exe <program>          program to start on click",
+ "    -theme <theme-dir>      directory containing a set of xpms",
+ "    -noblink                don't blink",
+@@ -250,6 +251,11 @@ void parseArgs(asclock *my, int argc, ch
+         strcat(exec_str, " &");
+         continue;
+ 
++      case 'p':
++        if(++i >=argc) usage(ProgName);
++        sscanf(argv[i], "+%d+%d", &iX, &iY);
++        continue;
++
+       }
+     }
+   }

@@ -1,0 +1,302 @@
+diff -ur xcompmgr-1.1.6/configure.ac xcompmgr-1.1.6.new/configure.ac
+--- xcompmgr-1.1.6/configure.ac	2012-02-15 12:22:26.000000000 +0900
++++ xcompmgr-1.1.6.new/configure.ac	2012-07-02 20:04:05.062120201 +0900
+@@ -18,6 +18,6 @@
+ XORG_MACROS_VERSION(1.3)
+ XORG_DEFAULT_OPTIONS
+ 
+-PKG_CHECK_MODULES(XCOMPMGR, xcomposite xfixes xdamage xrender xext)
++PKG_CHECK_MODULES(XCOMPMGR, xcomposite xfixes xdamage xrender xext gl)
+ 
+ AC_OUTPUT([Makefile])
+diff -ur xcompmgr-1.1.6/xcompmgr.c xcompmgr-1.1.6.new/xcompmgr.c
+--- xcompmgr-1.1.6/xcompmgr.c	2011-11-19 16:49:52.000000000 +0900
++++ xcompmgr-1.1.6.new/xcompmgr.c	2012-07-02 20:04:35.355261618 +0900
+@@ -45,6 +45,7 @@
+ #include <X11/extensions/Xdamage.h>
+ #include <X11/extensions/Xrender.h>
+ #include <X11/extensions/shape.h>
++#include <GL/glx.h>
+ 
+ #if COMPOSITE_MAJOR > 0 || COMPOSITE_MINOR >= 2
+ #define HAS_NAME_WINDOW_PIXMAP 1
+@@ -131,6 +132,7 @@
+ static int		xshape_event, xshape_error;
+ static Bool		synchronize;
+ static int		composite_opcode;
++static Pixmap		rootPixmap;
+ 
+ /* find these once and be done with it */
+ static Atom		opacityAtom;
+@@ -203,6 +205,220 @@
+ static unsigned char	*shadowCorner = NULL;
+ static unsigned char	*shadowTop = NULL;
+ 
++#if WAIT_FOR_VIDEO_SYNC
++static void
++noop (void)
++{
++}
++
++static void wait_for_video_sync (void);
++
++static void (*p_wait_for_video_sync) (void) = noop;
++static PFNGLXGETVIDEOSYNCSGIPROC    glXGetVideoSyncSGI = NULL;
++static PFNGLXWAITVIDEOSYNCSGIPROC   glXWaitVideoSyncSGI = NULL;
++#endif
++static void gl_init (Display *dpy);
++static void gl_root_init (Display *dpy);
++static void gl_root_fini (Display *dpy);
++static void gl_paint (Display *dpy);
++
++static PFNGLXBINDTEXIMAGEEXTPROC    glXBindTexImageEXT;
++static PFNGLXRELEASETEXIMAGEEXTPROC glXReleaseTexImageEXT;
++static GLXContext	ctx;
++static GLXFBConfig	fbconfig;
++static GLdouble		top;
++static GLdouble		bottom;
++static GLuint		texture;
++static GLXPixmap	glxpixmap = None;
++
++static void gl_init (Display *dpy)
++{
++    XWindowAttributes    attr;
++    XVisualInfo		 templ;
++    XVisualInfo		 *visinfo;
++    int			 nvisinfo, value;
++    const char *glx_extensions;
++    GLXFBConfig		 *fbconfigs;
++    int			 nfbconfigs;
++    int			 i;
++
++    if (!XGetWindowAttributes (dpy, root, &attr))
++    {
++	exit (1);
++    }
++
++    templ.visualid = XVisualIDFromVisual (attr.visual);
++
++    visinfo = XGetVisualInfo (dpy, VisualIDMask, &templ, &nvisinfo);
++    if (!nvisinfo)
++    {
++	fprintf (stderr, "Couldn't get visual info for default visual\n");
++	exit (1);
++    }
++
++    glXGetConfig (dpy, visinfo, GLX_USE_GL, &value);
++    if (!value)
++    {
++	fprintf (stderr, "Root visual is not a GL visual\n");
++	XFree (visinfo);
++	exit (1);
++    }
++
++    glXGetConfig (dpy, visinfo, GLX_DOUBLEBUFFER, &value);
++    if (!value)
++    {
++	fprintf (stderr, "Root visual is not a double buffered GL visual\n");
++	XFree (visinfo);
++	exit (1);
++    }
++
++    ctx = glXCreateContext (dpy, visinfo, NULL, True);
++    if (!ctx)
++    {
++	fprintf (stderr, "glXCreateContext failed\n");
++	XFree (visinfo);
++	exit (1);
++    }
++
++    XFree (visinfo);
++    glx_extensions = glXQueryExtensionsString (dpy, scr);
++
++    glXBindTexImageEXT = (PFNGLXBINDTEXIMAGEEXTPROC) glXGetProcAddress ((const GLubyte *)"glXBindTexImageEXT");
++    glXReleaseTexImageEXT = (PFNGLXRELEASETEXIMAGEEXTPROC) glXGetProcAddress ((const GLubyte *)"glXReleaseTexImageEXT");
++
++    if (!strstr (glx_extensions, "GLX_EXT_texture_from_pixmap") ||
++	    !glXBindTexImageEXT || !glXReleaseTexImageEXT)
++    {
++	fprintf (stderr, "GLX_EXT_texture_from_pixmap is missing\n");
++	exit (1);
++    }
++
++#if WAIT_FOR_VIDEO_SYNC
++    if (strstr (glx_extensions, "GLX_SGI_video_sync"))
++    {
++	glXGetVideoSyncSGI = (PFNGLXGETVIDEOSYNCSGIPROC) glXGetProcAddress ((const GLubyte *)"glXGetVideoSyncSGI");
++	glXWaitVideoSyncSGI = (PFNGLXWAITVIDEOSYNCSGIPROC) glXGetProcAddress ((const GLubyte *)"glXWaitVideoSyncSGI");
++	p_wait_for_video_sync = wait_for_video_sync;
++    }
++#endif
++
++    glXMakeCurrent (dpy, root, ctx);
++
++    fbconfigs = glXGetFBConfigs (dpy, scr, &nfbconfigs);
++    for (i = 0; i < nfbconfigs; i++)
++    {
++	visinfo = glXGetVisualFromFBConfig (dpy, fbconfigs[i]);
++	if (!visinfo || visinfo->visualid != templ.visualid)
++	    continue;
++
++	glXGetFBConfigAttrib (dpy, fbconfigs[i], GLX_DRAWABLE_TYPE, &value);
++	if (!(value & GLX_PIXMAP_BIT))
++	    continue;
++
++	glXGetFBConfigAttrib (dpy, fbconfigs[i], GLX_BIND_TO_TEXTURE_TARGETS_EXT, &value);
++	if (!(value & GLX_TEXTURE_2D_BIT_EXT))
++	    continue;
++
++	glXGetFBConfigAttrib (dpy, fbconfigs[i], GLX_BIND_TO_TEXTURE_RGBA_EXT, &value);
++	if (!value)
++	{
++	    glXGetFBConfigAttrib (dpy, fbconfigs[i], GLX_BIND_TO_TEXTURE_RGB_EXT, &value);
++	    if (!value)
++		continue;
++	}
++
++	glXGetFBConfigAttrib (dpy, fbconfigs[i], GLX_Y_INVERTED_EXT, &value);
++	if (value)
++	{
++	    top = 0.0;
++	    bottom = 1.0;
++	}
++	else
++	{
++	    top = 1.0;
++	    bottom = 0.0;
++	}
++
++	break;
++    }
++
++    if (i == nfbconfigs)
++    {
++	fprintf (stderr, "error 1\n");
++	exit (1);
++    }
++    fbconfig = fbconfigs[i];
++    if (nfbconfigs)
++	XFree (fbconfigs);
++
++    glEnable (GL_TEXTURE_2D);
++
++    glGenTextures (1, &texture);
++    glBindTexture (GL_TEXTURE_2D, texture);
++
++#if 0
++    glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++    glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++#else
++    glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
++    glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++#endif
++}
++
++static void gl_root_init (Display *dpy)
++{
++    int pixmapAttribs[] = { GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_2D_EXT,
++			    GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGBA_EXT,
++			    None };
++    glxpixmap = glXCreatePixmap (dpy, fbconfig, rootPixmap, pixmapAttribs);
++
++    glXBindTexImageEXT (dpy, glxpixmap, GLX_FRONT_LEFT_EXT, NULL);
++}
++
++static void gl_root_fini (Display *dpy)
++{
++    glXReleaseTexImageEXT (dpy, glxpixmap, GLX_FRONT_LEFT_EXT);
++    glXDestroyPixmap (dpy, rootPixmap);
++}
++
++static void gl_paint (Display *dpy)
++{
++    struct timespec req = { 0, 1000000 };
++
++    /* draw using pixmap as texture */
++    glBegin (GL_QUADS);
++
++    glTexCoord2d (0.0, bottom);
++    glVertex2d (-1.0, -1.0);
++
++    glTexCoord2d (0.0, top);
++    glVertex2d (-1.0, 1.0);
++
++    glTexCoord2d (1.0, top);
++    glVertex2d (1.0, 1.0);
++
++    glTexCoord2d (1.0, bottom);
++    glVertex2d (1.0, -1.0);
++
++    glEnd ();
++
++    glXSwapBuffers (dpy, root);
++
++    // wait for XDamageNotifyEvent by other glXSwapBuffers
++    nanosleep (&req, NULL);
++}
++
++#if WAIT_FOR_VIDEO_SYNC
++static void
++wait_for_video_sync (void)
++{
++    unsigned int sync;
++
++    (*glXGetVideoSyncSGI) (&sync);
++    (*glXWaitVideoSyncSGI) (2, (sync + 1) % 2, &sync);
++}
++#endif
++
+ static int
+ get_time_in_milliseconds (void)
+ {
+@@ -927,13 +1143,13 @@
+ #else
+     if (!rootBuffer)
+     {
+-	Pixmap	rootPixmap = XCreatePixmap (dpy, root, root_width, root_height,
++	/* Pixmap */	rootPixmap = XCreatePixmap (dpy, root, root_width, root_height,
+ 					    DefaultDepth (dpy, scr));
+ 	rootBuffer = XRenderCreatePicture (dpy, rootPixmap,
+ 					   XRenderFindVisualFormat (dpy,
+ 								    DefaultVisual (dpy, scr)),
+ 					   0, NULL);
+-	XFreePixmap (dpy, rootPixmap);
++	gl_root_init (dpy);
+     }
+ #endif
+     XFixesSetPictureClipRegion (dpy, rootPicture, 0, 0, region);
+@@ -1121,9 +1337,16 @@
+     XFixesDestroyRegion (dpy, region);
+     if (rootBuffer != rootPicture)
+     {
++#if 0
+ 	XFixesSetPictureClipRegion (dpy, rootBuffer, 0, 0, None);
++#if WAIT_FOR_VIDEO_SYNC
++	p_wait_for_video_sync ();
++#endif
+ 	XRenderComposite (dpy, PictOpSrc, rootBuffer, None, rootPicture,
+ 			  0, 0, 0, 0, 0, 0, root_width, root_height);
++#else
++	gl_paint (dpy);
++#endif
+     }
+ }
+ 
+@@ -1537,6 +1760,8 @@
+ 	    {
+ 		XRenderFreePicture (dpy, rootBuffer);
+ 		rootBuffer = None;
++		gl_root_fini (dpy);
++		XFreePixmap (dpy, rootPixmap);
+ 	    }
+ 	    root_width = ce->width;
+ 	    root_height = ce->height;
+@@ -2160,6 +2385,8 @@
+ 	exit (1);
+     }
+ 
++    gl_init (dpy);
++
+     if (!register_cm(dpy))
+     {
+ 	exit (1);

@@ -1,0 +1,217 @@
+diff -ur asclock-gtk.orig/Makefile asclock-gtk/Makefile
+--- asclock-gtk.orig/Makefile	1999-03-26 16:08:33.000000000 +0900
++++ asclock-gtk/Makefile	2011-05-11 02:56:18.000000000 +0900
+@@ -11,9 +11,9 @@
+ GNOME_LIBS = -lpanel -lpanel_applet `gnome-config --libs gnomeui gnome gtk gnorba`
+ 
+ GTK_CC = gcc $(CFLAGS) -DASCLOCK_THEMES_DIR=\""/usr/local/share/asclock"\" \
+-	     -DASCLOCK_GTK `$(CONFIG_PATH)gtk-config --cflags`
++	     -DASCLOCK_GTK `$(CONFIG_PATH)pkg-config --cflags gtk+-2.0`
+ GTK_OBJS = .gtk/draw.o .gtk/asclock.o .gtk/config.o .gtk/rot.o .gtk/parser.o .gtk/symbols.o
+-GTK_LIBS = `$(CONFIG_PATH)gtk-config --libs`
++GTK_LIBS = `$(CONFIG_PATH)pkg-config --libs gtk+-2.0`
+ 
+ 
+ info:	default_theme
+diff -ur asclock-gtk.orig/asclock.c asclock-gtk/asclock.c
+--- asclock-gtk.orig/asclock.c	1999-03-26 16:38:29.000000000 +0900
++++ asclock-gtk/asclock.c	2011-05-11 02:58:08.000000000 +0900
+@@ -80,6 +80,7 @@
+ void load_pixmaps(GtkWidget *window, GtkStyle *style)
+ {
+   guint32 l;
++  gint width, height;
+     if(clock_pixmap) gdk_pixmap_unref(clock_pixmap);
+     if(clock_mask) gdk_pixmap_unref(clock_mask);
+     clock_pixmap=NULL;
+@@ -96,9 +97,10 @@
+ 
+     if(analog_visible) {
+       if(clock_img) gdk_image_destroy(clock_img);
++      gdk_drawable_get_size(clock_pixmap, &width, &height);
+       clock_img = gdk_image_get(clock_pixmap, 0, 0,
+-				((GdkWindowPrivate *)clock_pixmap)->width, 
+-				((GdkWindowPrivate *)clock_pixmap)->height);
++				width, 
++				height);
+       
+     }
+ 
+@@ -116,8 +118,9 @@
+                                          &style->bg[GTK_STATE_NORMAL], month_xpm);
+       if(!month_pixmap) fail2load(month_xpm_fn);
+ 
+-      month_elem_width = ((GdkWindowPrivate *)month_pixmap)->width;
+-      month_elem_height= ((GdkWindowPrivate *)month_pixmap)->height / 12;
++      gdk_drawable_get_size(month_pixmap, &width, &height);
++      month_elem_width = width;
++      month_elem_height= height / 12;
+     }
+ 
+     if(week_visible) {
+@@ -134,8 +137,9 @@
+ 
+       if(!weekday_pixmap) fail2load(weekday_xpm_fn);
+ 
+-      week_elem_width = ((GdkWindowPrivate *)weekday_pixmap)->width;
+-      week_elem_height= ((GdkWindowPrivate *)weekday_pixmap)->height/7;
++      gdk_drawable_get_size(weekday_pixmap, &width, &height);
++      week_elem_width = width;
++      week_elem_height= height/7;
+ 
+     }
+ 
+@@ -152,8 +156,9 @@
+ 					&style->bg[GTK_STATE_NORMAL], led_xpm);
+ 
+       if(!led_pixmap) fail2load(led_xpm_fn);
+-      led_elem_width = ((GdkWindowPrivate *)led_pixmap)->width /15;
+-      led_elem_height= ((GdkWindowPrivate *)led_pixmap)->height;
++      gdk_drawable_get_size(led_pixmap, &width, &height);
++      led_elem_width = width /15;
++      led_elem_height= height;
+     }
+ 
+     if(beats_visible) {
+@@ -169,8 +174,9 @@
+                                         &style->bg[GTK_STATE_NORMAL], beats_xpm);
+ 
+       if(!beats_pixmap) fail2load(beats_xpm_fn);
+-      beats_elem_width = ((GdkWindowPrivate *)beats_pixmap)->width /12;
+-      beats_elem_height= ((GdkWindowPrivate *)beats_pixmap)->height;
++      gdk_drawable_get_size(beats_pixmap, &width, &height);
++      beats_elem_width = width /12;
++      beats_elem_height= height;
+     }
+ 
+     if(day_visible) {
+@@ -185,8 +191,9 @@
+ 	date_pixmap = gdk_pixmap_create_from_xpm_d(window->window, &date_mask,
+ 						&style->bg[GTK_STATE_NORMAL], date_xpm);
+       if(!date_pixmap) fail2load(date_xpm_fn);
+-      day_elem_width =((GdkWindowPrivate *)date_pixmap)->width/10;
+-      day_elem_height=((GdkWindowPrivate *)date_pixmap)->height;
++      gdk_drawable_get_size(date_pixmap, &width, &height);
++      day_elem_width =width/10;
++      day_elem_height=height;
+     }
+ 
+     if(hour_visible) {
+@@ -204,8 +211,9 @@
+ 
+       if(!hour_pixmap) fail2load(hour_xpm_fn);
+ 
+-      w = ((GdkWindowPrivate *)hour_pixmap)->width;
+-      h = ((GdkWindowPrivate *)hour_pixmap)->height;
++      gdk_drawable_get_size(hour_pixmap, &width, &height);
++      w = width;
++      h = height;
+ 
+       if(hour_img) gdk_image_destroy(hour_img);
+       hour_img = gdk_image_get(hour_mask, 0, 0, w, h);
+@@ -240,8 +248,9 @@
+     
+       if(!min_pixmap) fail2load(min_xpm_fn);
+ 
+-      w = ((GdkWindowPrivate *)min_pixmap)->width;
+-      h = ((GdkWindowPrivate *)min_pixmap)->height;
++      gdk_drawable_get_size(min_pixmap, &width, &height);
++      w = width;
++      h = height;
+ 
+       if(min_img) gdk_image_destroy(min_img);
+       min_img = gdk_image_get(min_mask, 0, 0, w, h);
+@@ -278,8 +287,9 @@
+ 
+       if(!sec_pixmap) fail2load(sec_xpm_fn);
+ 
+-      w = ((GdkWindowPrivate *)sec_pixmap)->width;
+-      h = ((GdkWindowPrivate *)sec_pixmap)->height;
++      gdk_drawable_get_size(sec_pixmap, &width, &height);
++      w = width;
++      h = height;
+      
+       if(sec_img) gdk_image_destroy(sec_img); 
+       sec_img = gdk_image_get(sec_mask, 0, 0, w, h);
+@@ -362,7 +372,7 @@
+       XCopyArea(GDK_DISPLAY(),
+ 		GDK_WINDOW_XWINDOW(my->pixmap), 
+ 		my->iconwin,
+-		((GdkGCPrivate *)(my->white_gc))->xgc,
++		GDK_GC_XGC(my->white_gc),
+ 		0, 0, my->width, my->height, 0, 0);
+ 
+   return 1;
+@@ -373,9 +383,10 @@
+ void set_clock_pixmap()
+ {
+     GdkPixmap *pixmap;
+-    GdkWindowPrivate *clk = (GdkWindowPrivate *) clock_pixmap;
+-    my->width=clk->width;
+-    my->height=clk->height;
++    gint width, height;
++    gdk_drawable_get_size(clock_pixmap, &width, &height);
++    my->width=width;
++    my->height=height;
+ 
+     gdk_pixmap_unref(my->pixmap);
+ 
+@@ -426,7 +437,6 @@
+ int main( int argc, char *argv[] )
+ {
+     /* GtkWidget is the storage type for widgets */
+-    GdkWindowPrivate *clk;
+     GdkColor colour;
+     GdkColormap *cmap;
+ 
+@@ -508,9 +518,10 @@
+     load_pixmaps(my->window, my->style);
+     postconfig();
+ 
+-    clk = (GdkWindowPrivate *) clock_pixmap;
+-    my->width=clk->width;
+-    my->height=clk->height;
++    gint width, height;
++    gdk_drawable_get_size(clock_pixmap, &width, &height);
++    my->width=width;
++    my->height=height;
+ 
+     my->pixmap = gdk_pixmap_new(my->window->window, my->width, my->height, -1);
+ 
+@@ -600,8 +611,8 @@
+   
+     if(itdocks) 
+       {
+-	Display *dpy = ((GdkWindowPrivate *)my->window->window)->xdisplay;
+-	Window win = ((GdkWindowPrivate *)my->window->window)->xwindow;
++	Display *dpy = GDK_WINDOW_XDISPLAY(my->window->window);
++	Window win = GDK_WINDOW_XWINDOW(my->window->window);
+ 	XWMHints mywmhints;
+ 	Pixel back_pix, fore_pix;
+ 	
+@@ -613,7 +624,7 @@
+ 					 0, fore_pix, back_pix);
+ 
+ 	XShapeCombineMask(dpy, my->iconwin, ShapeBounding, 0, 0, 
+-			  ((GdkWindowPrivate *)clock_mask)->xwindow, ShapeSet);
++			  GDK_WINDOW_XWINDOW(clock_mask), ShapeSet);
+ 
+ 	mywmhints.icon_window = my->iconwin;
+ 	mywmhints.flags = StateHint | IconWindowHint | WindowGroupHint;
+diff -ur asclock-gtk.orig/draw.c asclock-gtk/draw.c
+--- asclock-gtk.orig/draw.c	1999-03-26 15:48:55.000000000 +0900
++++ asclock-gtk/draw.c	2011-05-11 02:19:27.000000000 +0900
+@@ -13,9 +13,11 @@
+   if(clock_img)
+     gdk_image_destroy(clock_img); 
+   
++  gint width, height;
++  gdk_drawable_get_size(clock_pixmap, &width, &height);
+   clock_img = gdk_image_get(p, 0, 0,
+-			    ((GdkWindowPrivate *)clock_pixmap)->width, 
+-			    ((GdkWindowPrivate *)clock_pixmap)->height);
++			    width, 
++			    height);
+ 
+   if(hour_visible) {
+     t = ((double) (clk->tm_hour)*60 + clk->tm_min)/2 + ((double)clk->tm_sec)/120;
