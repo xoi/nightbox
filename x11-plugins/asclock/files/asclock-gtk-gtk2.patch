@@ -9,7 +9,7 @@ diff -ur asclock-gtk.orig/Makefile asclock-gtk/Makefile
 +	     -DASCLOCK_GTK `$(CONFIG_PATH)pkg-config --cflags gtk+-2.0`
  GTK_OBJS = .gtk/draw.o .gtk/asclock.o .gtk/config.o .gtk/rot.o .gtk/parser.o .gtk/symbols.o
 -GTK_LIBS = `$(CONFIG_PATH)gtk-config --libs`
-+GTK_LIBS = `$(CONFIG_PATH)pkg-config --libs gtk+-2.0`
++GTK_LIBS = `$(CONFIG_PATH)pkg-config --libs gtk+-2.0 x11 xext` -lm
  
  
  info:	default_theme
