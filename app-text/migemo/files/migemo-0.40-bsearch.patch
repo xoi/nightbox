@@ -1,0 +1,11 @@
+--- migemo-0.40-orig/configure	2003-05-28 12:19:38.000000000 +0000
++++ migemo-0.40/configure	2020-02-11 06:40:37.035019983 +0000
+@@ -975,7 +975,7 @@
+   
+ 
+ echo -n "checking Ruby/Bsearch... "
+-if ruby -rbsearch -e 'exit(if Bsearch::VERSION >= "1.2" then 0 else 1 end)'; then
++if ruby -rbsearch -e 'exit(if Bsearch::VERSION::STRING >= "1.2" then 0 else 1 end)'; then
+    echo found
+ else
+    echo not found

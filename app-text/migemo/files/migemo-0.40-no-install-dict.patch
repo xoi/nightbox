@@ -1,0 +1,11 @@
+--- migemo-0.40-orig/Makefile.in	2003-05-29 08:09:02.000000000 +0000
++++ migemo-0.40/Makefile.in	2020-02-11 06:45:28.556052713 +0000
+@@ -73,7 +73,7 @@
+ 		migemo-convert.rb migemo-index.rb migemo-cache.rb 
+ 
+ ruby_DATA = migemo.rb $(ruby_data_)
+-pkgdata_DATA = migemo-dict migemo-dict.idx\
++pkgdata_DATA = migemo-dict.idx\
+ 		migemo-dict.cache migemo-dict.cache.idx\
+ 		user-dict.sample regex-dict.sample\
+ 		migemo.ja.rd
